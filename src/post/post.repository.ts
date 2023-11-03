@@ -1,4 +1,4 @@
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
 import { CustomRepository } from '../common/decorator/typeorm-ex.decorator';
 import { Post } from './entities/post.entity';
 import { PostDto } from './dto/post.dto';
@@ -12,7 +12,11 @@ export class PostRepository extends Repository<Post> {
       .getOne();
   }
 
-  private buildQueryBuilder(postDto: PostDto) {
+  private buildQueryBuilder(postDto: PostDto): {
+    queryBuilder: SelectQueryBuilder<Post>;
+    orderByColumn: string;
+    orderDirection: 'ASC' | 'DESC';
+  } {
     const limit = postDto.pageCount;
     const offset = postDto.pageCount * (postDto.page - 1); // DTO에서 pageCount string과 page string을 number로 바꿈
     const queryBuilder = this.createQueryBuilder('posts')
@@ -57,17 +61,19 @@ export class PostRepository extends Repository<Post> {
       : 'created_at';
     const orderDirection = postDto.orderDirection === 'ASC' ? 'ASC' : 'DESC';
     queryBuilder.orderBy(`posts.${orderByColumn}`, orderDirection);
-    return queryBuilder;
+    return { queryBuilder, orderByColumn, orderDirection };
   }
 
   async findPostByTag(postDto: PostDto) {
-    const queryBuilder = this.buildQueryBuilder(postDto);
+    const { queryBuilder, orderByColumn, orderDirection } =
+      this.buildQueryBuilder(postDto);
     const posts = await queryBuilder.getRawMany();
     const postIds = posts.map((post) => post.posts_id);
 
     const postsWithAllTags = await this.createQueryBuilder('posts')
       .leftJoinAndSelect('posts.tags', 'tags')
       .whereInIds(postIds)
+      .orderBy(`posts.${orderByColumn}`, orderDirection)
       .getMany();
 
     const postsWithTruncatedContent = postsWithAllTags.map((post) => ({
